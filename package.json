@@ -1,0 +1,16 @@
+{
+  "name": "appp",
+  "version": "1.0.0",
+  "description": "This README focuses ONLY on the essential steps to package and deploy the app to Microsoft Teams using the Microsoft 365 Agents Toolkit (toolkit-driven manifest templating + validation + packaging). All other architectural or future feature details are intentionally omitted per request.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@microsoft/m365agentstoolkit-cli": "^1.1.0"
+  }
+}
