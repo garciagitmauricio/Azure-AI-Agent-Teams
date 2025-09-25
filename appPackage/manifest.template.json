@@ -1,0 +1,43 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "${APP_VERSION}",
+  "id": "${APP_ID}",
+  "packageName": "com.company.hrpolicy.assistant",
+  "developer": {
+    "name": "HR Department",
+    "websiteUrl": "${APP_BASE_URL}/",
+    "privacyUrl": "${APP_BASE_URL}/privacy",
+    "termsOfUseUrl": "${APP_BASE_URL}/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "HR Policy Assistant",
+    "full": "HR Policy Assistant - AI-Powered Support"
+  },
+  "description": {
+    "short": "AI assistant for HR policies and workplace questions",
+    "full": "Your intelligent HR Policy Assistant helps employees quickly find answers to HR policies, benefits, leave procedures, and workplace guidelines using AI-powered search and support."
+  },
+  "accentColor": "#464775",
+  "staticTabs": [
+    {
+      "entityId": "hrpolicy",
+      "name": "HR Assistant",
+      "contentUrl": "${APP_BASE_URL}/",
+      "websiteUrl": "${APP_BASE_URL}/",
+      "scopes": [
+        "personal"
+      ]
+    }
+  ],
+  "permissions": [
+    "identity"
+  ],
+  "validDomains": [
+    "${HOST_DOMAIN}"
+  ]
+}
