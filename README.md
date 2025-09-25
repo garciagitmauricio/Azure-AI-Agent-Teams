@@ -2,6 +2,9 @@
 
 This README focuses ONLY on the essential steps to package and deploy the app to Microsoft Teams using the Microsoft 365 Agents Toolkit (toolkit-driven manifest templating + validation + packaging). All other architectural or future feature details are intentionally omitted per request.
 
+# Watch the Video for Step by Step Configuration
+
+[![Video Title](https://img.youtube.com/vi/HU5sAsD1DYw/0.jpg)](https://www.youtube.com/watch?v=HU5sAsD1DYw)
 ---
 ## Overview of Required Artifacts
 | File | Purpose |
@@ -196,3 +199,4 @@ That’s all that’s required for deployment with the toolkit.
 
 ---
 *End of minimal guide.*
+
