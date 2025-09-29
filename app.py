@@ -18,7 +18,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Azure AI Configuration - using the provided endpoint
-ENDPOINT = "https://teamshub001.services.ai.azure.com/api/projects/teamsproject01"
+ENDPOINT = "https://epwater-multi-agent-test-resourc.services.ai.azure.com/api/projects/multi-agent-test"
 AGENT_ID = os.getenv('AZURE_AI_AGENT_ID', 'your-agent-id')  # Set this in .env
 API_VERSION = "2025-05-01"
 
@@ -254,4 +254,5 @@ if __name__ == '__main__':
     
     print(f"🌐 Server will run on port: {port}")
     print("=" * 50)
+
     app.run(debug=debug_mode, host='0.0.0.0', port=port)
