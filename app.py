@@ -24,7 +24,7 @@ CORS(app)
 #   https://<ai-services-id>.services.ai.azure.com/api/projects/<project-name>
 ENDPOINT = os.getenv(
     "AZURE_AI_PROJECT_ENDPOINT",
-    "https://epwater-multi-agent-test-resource.services.ai.azure.com/api/projects/multi-agent-test",
+    "https://epwater-multi-agent-test-resourc.services.ai.azure.com/api/projects/multi-agent-test",
 )
 AGENT_ID = os.getenv("AZURE_AI_AGENT_ID", "your-agent-id")  # set this in .env / App Settings
 API_VERSION = "v1"
@@ -290,6 +290,7 @@ if __name__ == "__main__":
     print("=" * 50)
 
     app.run(debug=debug_mode, host="0.0.0.0", port=port)
+
 
 
 
