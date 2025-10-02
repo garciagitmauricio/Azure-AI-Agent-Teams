@@ -24,12 +24,12 @@ CORS(app)
 #   https://<ai-services-id>.services.ai.azure.com/api/projects/<project-name>
 ENDPOINT = os.getenv(
     "AZURE_AI_PROJECT_ENDPOINT",
-    "https://epwater-multi-agent-test-resourc.services.ai.azure.com/api/projects/multi-agent-test",
+    "https://epwater-multi-agent-test-resource.services.ai.azure.com/api/projects/multi-agent-test",
 )
 AGENT_ID = os.getenv("AZURE_AI_AGENT_ID", "your-agent-id")  # set this in .env / App Settings
 API_VERSION = "v1"
 
-# Auth (Managed Identity / Service Principal)
+# Auth objects
 credential = DefaultAzureCredential()
 
 # Reuse one HTTP session (lower overhead)
@@ -40,19 +40,19 @@ current_thread_id = None
 
 
 def get_auth_headers():
-    """Get authorization headers for Azure AI Agents API."""
-    try:
-        print("🔐 Getting Azure token...")
-        token = credential.get_token("https://ai.azure.com/.default").token
-        print("✅ Token obtained")
-        return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    except Exception as e:
-        print(f"❌ Token error: {e} ({type(e).__name__})")
-        api_key = os.getenv("AZURE_AI_API_KEY")
-        if api_key:
-            print("🔑 Falling back to API key")
-            return {"api-key": api_key, "Content-Type": "application/json"}
-        raise
+    """
+    Prefer the Project API key for Agents data-plane calls.
+    Falls back to AAD token only if AZURE_AI_API_KEY is not set.
+    """
+    api_key = os.getenv("AZURE_AI_API_KEY")
+    if api_key:
+        print("🔑 Using Project API key for authentication")
+        return {"api-key": api_key, "Content-Type": "application/json"}
+
+    # Fallback: try AAD token (RBAC must be granted on the project/account)
+    print("🔐 AZURE_AI_API_KEY not set; using Azure AD token")
+    token = credential.get_token("https://ai.azure.com/.default").token
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
 def _http_error_details(resp: requests.Response) -> str:
