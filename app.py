@@ -22,11 +22,10 @@ CORS(app)
 # -------------------------------
 # Example project endpoint:
 #   https://<ai-services-id>.services.ai.azure.com/api/projects/<project-name>
-ENDPOINT = os.getenv(
-    "AZURE_AI_PROJECT_ENDPOINT",
-    "https://epwater-multi-agent-test-resourc.services.ai.azure.com/api/projects/multi-agent-test",
-)
-AGENT_ID = os.getenv("AZURE_AI_AGENT_ID", "your-agent-id")  # set this in .env / App Settings
+# Sanitize values to avoid hidden whitespace/newlines
+ENDPOINT = (os.getenv("AZURE_AI_PROJECT_ENDPOINT", "") or "").strip().rstrip("/")
+API_KEY  = (os.getenv("AZURE_AI_API_KEY", "") or "").strip()
+AGENT_ID = (os.getenv("AZURE_AI_AGENT_ID", "") or "").strip() or "your-agent-id"
 API_VERSION = "v1"
 
 # Auth objects
@@ -39,20 +38,11 @@ session = requests.Session()
 current_thread_id = None
 
 
-def get_auth_headers():
-    """
-    Prefer the Project API key for Agents data-plane calls.
-    Falls back to AAD token only if AZURE_AI_API_KEY is not set.
-    """
-    api_key = os.getenv("AZURE_AI_API_KEY")
-    if api_key:
-        print("🔑 Using Project API key for authentication")
-        return {"api-key": api_key, "Content-Type": "application/json"}
-
-    # Fallback: try AAD token (RBAC must be granted on the project/account)
-    print("🔐 AZURE_AI_API_KEY not set; using Azure AD token")
-    token = credential.get_token("https://ai.azure.com/.default").token
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+# ---------- helpers ----------
+def _mask(s: str, show_last: int = 4) -> str:
+    if not s:
+        return ""
+    return "*" * max(0, len(s) - show_last) + s[-show_last:]
 
 
 def _http_error_details(resp: requests.Response) -> str:
@@ -66,6 +56,21 @@ def _http_error_details(resp: requests.Response) -> str:
         return f"Status={resp.status_code} Raw={resp.text}"
 
 
+def get_auth_headers():
+    """
+    Prefer the Project API key for Agents data-plane calls.
+    Falls back to AAD token only if AZURE_AI_API_KEY is not set.
+    """
+    if API_KEY:
+        print("🔑 Using API key auth")
+        return {"api-key": API_KEY, "Content-Type": "application/json"}
+
+    print("🔐 AZURE_AI_API_KEY not set; using Azure AD token")
+    token = credential.get_token("https://ai.azure.com/.default").token
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+# ---------- core calls ----------
 def create_thread():
     """Create a new conversation thread. Returns thread_id or {'_error': ...}."""
     try:
@@ -169,6 +174,7 @@ def send_message(thread_id: str, message: str):
     return "Sorry, I couldn't process your request at the moment."
 
 
+# ---------- routes ----------
 @app.after_request
 def add_no_cache_headers(resp):
     # Helps during debugging and avoids stale HTML in some hosts/CDNs
@@ -255,33 +261,84 @@ def new_conversation():
 
 @app.route("/health")
 def health():
-    """Health check endpoint"""
+    """Health check endpoint (safe, redacted)"""
     return jsonify(
         {
             "status": "healthy",
             "endpoint": ENDPOINT,
             "api_version": API_VERSION,
             "agent_id_set": bool(AGENT_ID and AGENT_ID != "your-agent-id"),
-            "api_key_present": bool(os.getenv("AZURE_AI_API_KEY")),
+            "api_key_present": bool(API_KEY),
+            "api_key_len": len(API_KEY) if API_KEY else 0,
+            "api_key_masked": _mask(API_KEY),
         }
     )
 
 
-@app.route("/diag/thread", methods=["POST"])
-def diag_thread():
-    """Direct diagnostic to test thread creation and surface Azure error details."""
-    result = create_thread()
-    if isinstance(result, dict) and result.get("_error"):
-        return jsonify({"ok": False, "detail": result["_error"]}), 502
-    return jsonify({"ok": True, "thread_id": result})
+# ---------- Diagnostics (safe to expose) ----------
+@app.route("/diag/config")
+def diag_config():
+    """Show redacted config values to verify environment is correct."""
+    import urllib.parse
+    try:
+        host = urllib.parse.urlparse(ENDPOINT).hostname
+    except Exception:
+        host = ""
+    return jsonify(
+        {
+            "endpoint": ENDPOINT,
+            "host": host,
+            "api_key_present": bool(API_KEY),
+            "api_key_len": len(API_KEY) if API_KEY else 0,
+            "api_key_masked": _mask(API_KEY),
+        }
+    )
+
+
+@app.route("/diag/dns")
+def diag_dns():
+    """Resolve the endpoint host to verify DNS from this environment."""
+    import socket, urllib.parse
+    host = urllib.parse.urlparse(ENDPOINT).hostname if ENDPOINT else ""
+    try:
+        infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+        addrs = sorted({ai[4][0] for ai in infos})
+        return jsonify({"ok": True, "host": host, "addresses": addrs})
+    except Exception as e:
+        return jsonify({"ok": False, "host": host, "error": f"{e} ({type(e).__name__})"}), 502
+
+
+@app.route("/diag/selftest", methods=["POST"])
+def diag_selftest():
+    """Make a direct POST /threads call and return raw status/body (key redacted)."""
+    try:
+        headers = get_auth_headers()
+        safe_headers = {k: ("<redacted>" if k.lower() == "api-key" else v) for k, v in headers.items()}
+        url = f"{ENDPOINT}/threads?api-version={API_VERSION}"
+        resp = session.post(url, headers=headers, json={}, timeout=20)
+        try:
+            body = resp.json()
+        except Exception:
+            body = resp.text
+        return jsonify(
+            {
+                "endpoint": ENDPOINT,
+                "headers_used": safe_headers,
+                "status": resp.status_code,
+                "response": body,
+            }
+        ), (200 if resp.status_code in (200, 201) else 502)
+    except Exception as e:
+        return jsonify({"error": f"{e} ({type(e).__name__})"}), 500
 
 
 if __name__ == "__main__":
+    # Safe startup logs (masked)
     print("🚀 Starting Simple AI Agent App")
-    print(f"📡 Endpoint: {ENDPOINT}")
+    print("🔧 Endpoint:", ENDPOINT)
+    print("🔧 API key present:", bool(API_KEY), " len:", len(API_KEY) if API_KEY else 0, " masked:", _mask(API_KEY))
     print(f"🔗 Agent (assistant) ID set: {bool(AGENT_ID and AGENT_ID != 'your-agent-id')}")
     print(f"📄 API Version: {API_VERSION}")
-    print(f"🔑 API key present: {bool(os.getenv('AZURE_AI_API_KEY'))}")
 
     # App Service sets PORT; keep debug off unless explicitly in development
     port = int(os.environ.get("PORT", 5000))
@@ -290,9 +347,3 @@ if __name__ == "__main__":
     print("=" * 50)
 
     app.run(debug=debug_mode, host="0.0.0.0", port=port)
-
-
-
-
-
-
