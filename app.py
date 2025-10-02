@@ -308,9 +308,12 @@ def diag_dns():
         return jsonify({"ok": False, "host": host, "error": f"{e} ({type(e).__name__})"}), 502
 
 
-@app.route("/diag/selftest", methods=["POST"])
+@app.route("/diag/selftest", methods=["GET", "POST"])
 def diag_selftest():
-    """Make a direct POST /threads call and return raw status/body (key redacted)."""
+    """
+    Make a direct POST /threads call and return raw status/body (key redacted).
+    Accepts GET for convenience (will still perform a POST to the service).
+    """
     try:
         headers = get_auth_headers()
         safe_headers = {k: ("<redacted>" if k.lower() == "api-key" else v) for k, v in headers.items()}
@@ -347,3 +350,4 @@ if __name__ == "__main__":
     print("=" * 50)
 
     app.run(debug=debug_mode, host="0.0.0.0", port=port)
+
