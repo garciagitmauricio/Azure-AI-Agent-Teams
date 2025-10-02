@@ -1,6 +1,6 @@
 """
 Simple Azure AI Foundry Agent App
-No Teams SDK, no complexity - just a clean agent interface
+No Teams SDK, no complexity — just a clean agent interface
 """
 
 from azure.identity import DefaultAzureCredential
@@ -20,47 +20,38 @@ CORS(app)
 # -------------------------------
 # Azure AI Foundry (Agents) config
 # -------------------------------
-# Example format for the project endpoint:
-#   https://<your-ai-services-id>.services.ai.azure.com/api/projects/<your-project-name>
+# Example project endpoint:
+#   https://<ai-services-id>.services.ai.azure.com/api/projects/<project-name>
 ENDPOINT = os.getenv(
     "AZURE_AI_PROJECT_ENDPOINT",
     "https://epwater-multi-agent-test-resource.services.ai.azure.com/api/projects/multi-agent-test",
 )
-AGENT_ID = os.getenv("AZURE_AI_AGENT_ID", "your-agent-id")  # set this in .env
+AGENT_ID = os.getenv("AZURE_AI_AGENT_ID", "your-agent-id")  # set this in .env / App Settings
 API_VERSION = "v1"
 
-# Azure Authentication (Managed Identity / Service Principal)
+# Auth (Managed Identity / Service Principal)
 credential = DefaultAzureCredential()
 
 # Reuse one HTTP session (lower overhead)
 session = requests.Session()
 
-# Keep a single thread per process for simplicity
+# Keep a single thread id per process for simplicity
 current_thread_id = None
 
 
 def get_auth_headers():
     """Get authorization headers for Azure AI Agents API."""
     try:
-        print("🔐 Attempting Azure authentication (MSAL token)...")
+        print("🔐 Getting Azure token...")
         token = credential.get_token("https://ai.azure.com/.default").token
-        print("✅ Azure token obtained")
-        return {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }
+        print("✅ Token obtained")
+        return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     except Exception as e:
-        print(f"❌ Azure token error: {e} ({type(e).__name__})")
-
-        # Fallback to API key if available
+        print(f"❌ Token error: {e} ({type(e).__name__})")
         api_key = os.getenv("AZURE_AI_API_KEY")
         if api_key:
-            print("🔑 Using API key fallback")
+            print("🔑 Falling back to API key")
             return {"api-key": api_key, "Content-Type": "application/json"}
-
-        print(
-            "💥 No API key configured. Set AZURE_AI_API_KEY or grant the identity data-plane access to the project."
-        )
         raise
 
 
@@ -69,10 +60,7 @@ def _http_error_details(resp: requests.Response) -> str:
         j = resp.json()
         if isinstance(j, dict) and "error" in j:
             err = j["error"] or {}
-            return (
-                f"Status={resp.status_code} "
-                f"Code={err.get('code')} Message={err.get('message')}"
-            )
+            return f"Status={resp.status_code} Code={err.get('code')} Message={err.get('message')}"
         return f"Status={resp.status_code} Raw={resp.text}"
     except Exception:
         return f"Status={resp.status_code} Raw={resp.text}"
@@ -82,17 +70,15 @@ def create_thread():
     """Create a new conversation thread. Returns thread_id or {'_error': ...}."""
     try:
         url = f"{ENDPOINT}/threads?api-version={API_VERSION}"
-        print(f"🔗 Creating thread at: {url}")
-
+        print(f"🔗 Creating thread: {url}")
         headers = get_auth_headers()
         resp = session.post(url, headers=headers, json={}, timeout=30)
         print(f"📡 thread.create status={resp.status_code}")
 
         if resp.status_code in (200, 201):
-            data = resp.json()
-            thread_id = data.get("id")
-            print(f"✅ Thread created: {thread_id}")
-            return thread_id
+            tid = resp.json().get("id")
+            print(f"✅ Thread created: {tid}")
+            return tid
 
         detail = _http_error_details(resp)
         print(f"❌ thread.create failed: {detail}")
@@ -100,7 +86,6 @@ def create_thread():
 
     except Exception as e:
         import traceback
-
         traceback.print_exc()
         return {"_error": f"Exception in create_thread: {e} ({type(e).__name__})"}
 
@@ -133,9 +118,9 @@ def send_message(thread_id: str, message: str):
         print("❌ runs.create returned no run id")
         return None
 
-    # 3) Poll for completion
+    # 3) Poll for completion (≈45s max)
     status_url = f"{ENDPOINT}/threads/{thread_id}/runs/{run_id}?api-version={API_VERSION}"
-    for _ in range(45):  # ~45s max with 1s sleeps
+    for _ in range(45):
         status_resp = session.get(status_url, headers=headers, timeout=30)
         if status_resp.status_code != 200:
             print(f"❌ runs.get failed: {_http_error_details(status_resp)}")
@@ -154,14 +139,14 @@ def send_message(thread_id: str, message: str):
                 return None
 
             data = (messages_resp.json() or {}).get("data", [])
-            # Prefer newest-first; if not, sort by created_at desc
+
             def _created_at(msg):
                 return msg.get("created_at", 0)
 
             for msg in sorted(data, key=_created_at, reverse=True):
                 if msg.get("role") == "assistant":
                     for block in msg.get("content", []) or []:
-                        # Expect {"text": {"value": "..."}}
+                        # Most common: block["text"]["value"]
                         txt = None
                         if isinstance(block, dict):
                             if "text" in block and isinstance(block["text"], dict):
@@ -175,8 +160,7 @@ def send_message(thread_id: str, message: str):
         if status in ("failed", "cancelled", "expired"):
             last_error = (body or {}).get("last_error") or {}
             print(
-                f"❌ Run ended with status={status} "
-                f"code={last_error.get('code')} message={last_error.get('message')}"
+                f"❌ Run ended: status={status} code={last_error.get('code')} message={last_error.get('message')}"
             )
             return None
 
@@ -185,9 +169,18 @@ def send_message(thread_id: str, message: str):
     return "Sorry, I couldn't process your request at the moment."
 
 
+@app.after_request
+def add_no_cache_headers(resp):
+    # Helps during debugging and avoids stale HTML in some hosts/CDNs
+    if resp.mimetype == "text/html":
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    return resp
+
+
 @app.route("/")
 def home():
-    """Serve the UI"""
     return send_from_directory(".", "index.html")
 
 
@@ -227,11 +220,9 @@ def terms():
 def chat():
     """Handle chat messages"""
     global current_thread_id
-
     try:
         data = request.get_json(force=True)
         message = data.get("message", "").strip()
-
         if not message:
             return jsonify({"error": "No message provided"}), 400
 
@@ -239,10 +230,7 @@ def chat():
         if not current_thread_id:
             result = create_thread()
             if isinstance(result, dict) and result.get("_error"):
-                return (
-                    jsonify({"error": f"Create thread failed: {result['_error']}"}),
-                    502,
-                )
+                return jsonify({"error": f"Create thread failed: {result['_error']}"}), 502
             current_thread_id = result
             if not current_thread_id:
                 return jsonify({"error": "Create thread failed: unknown"}), 502
@@ -251,7 +239,6 @@ def chat():
         reply = send_message(current_thread_id, message)
         if reply:
             return jsonify({"response": reply, "thread_id": current_thread_id})
-
         return jsonify({"error": "Failed to get response from agent"}), 502
 
     except Exception as e:
@@ -292,7 +279,7 @@ def diag_thread():
 if __name__ == "__main__":
     print("🚀 Starting Simple AI Agent App")
     print(f"📡 Endpoint: {ENDPOINT}")
-    print(f"🔗 Agent (assistant) ID: {AGENT_ID}")
+    print(f"🔗 Agent (assistant) ID set: {bool(AGENT_ID and AGENT_ID != 'your-agent-id')}")
     print(f"📄 API Version: {API_VERSION}")
     print(f"🔑 API key present: {bool(os.getenv('AZURE_AI_API_KEY'))}")
 
@@ -303,5 +290,7 @@ if __name__ == "__main__":
     print("=" * 50)
 
     app.run(debug=debug_mode, host="0.0.0.0", port=port)
+
+
 
 
