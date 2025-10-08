@@ -26,7 +26,7 @@ CORS(app)
 ENDPOINT = (os.getenv("AZURE_AI_PROJECT_ENDPOINT", "") or "").strip().rstrip("/")
 API_KEY  = (os.getenv("AZURE_AI_API_KEY", "") or "").strip()
 AGENT_ID = (os.getenv("AZURE_AI_AGENT_ID", "") or "").strip() or "your-agent-id"
-API_VERSION = "v1"
+API_VERSION = "2025-04-01-preview"
 
 # Auth objects
 credential = DefaultAzureCredential()
@@ -350,4 +350,5 @@ if __name__ == "__main__":
     print("=" * 50)
 
     app.run(debug=debug_mode, host="0.0.0.0", port=port)
+
 
